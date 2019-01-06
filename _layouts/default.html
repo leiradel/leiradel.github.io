@@ -16,8 +16,8 @@
         <h1>{{ site.title | default: site.github.repository_name }}</h1>
         <h2>{{ site.description | default: site.github.project_tagline }}</h2>
 
-        <a href="https://twitter.com/leiradel"><img src="assets/images/Twitter_Social_Icon_Circle_White.png /></a>
-        <a href="https://github.com/leiradel"><img src="/assets/images/GitHub-Mark-32px.png" /></a>
+        <a href="https://twitter.com/leiradel"><img src="{{ site.url }}/assets/images/Twitter_Social_Icon_Circle_White.png" /></a>
+        <a href="https://github.com/leiradel"><img src="{{ site.url }}/assets/images/GitHub-Mark-32px.png" /></a>
 
         <section id="downloads">
           {% if site.show_downloads %}
