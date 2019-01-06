@@ -1,5 +1,8 @@
-title: Hacker theme
-description: Hacker is a theme for GitHub Pages.
-show_downloads: true
+title: Andre Leiradella
+description: Generalist Programmer
+show_downloads: false
 google_analytics:
 theme: jekyll-theme-hacker
+email: andre@leiradella.com
+twitter_username: leiradel
+github_username: leiradel
