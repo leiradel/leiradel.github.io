@@ -3,11 +3,9 @@ layout: post
 title: SmartStart32.S explained
 ---
 
-I'm writing bare metal code for the Rapberry Pi boards using the multicore version of [SmartStart32.S](https://github.com/LdB-ECM/Raspberry-Pi/blob/master/Multicore/SmartStart32.S) to setup the environment to start executing C code.
+I'm writing bare metal code for the Rapberry Pi boards using the multicore version of [SmartStart32.S](https://github.com/LdB-ECM/Raspberry-Pi/blob/master/Multicore/SmartStart32.S) to setup the environment to start executing C code. My intention down the road is to write my own boot loader, but for that I need to understand how this boot loader works. This post is just to assess my understanding of SmartStart and to share my findings with others.
 
-My intention down the road is to write my own boot loader, but for that I need to understand how this boot loader works. This post is just to assess my understanding of SmartStart and to share my findings with others.
-
-I've changed the order of the code when it makes understanding the flow easier. I've also changed to comments to pseudo-C to make the assembly listings easier on the eyes.
+I've changed the order of the code when it makes understanding the flow easier. I've also changed to comments to pseudo-C to make the assembly listings easier to understand.
 
 ## The Raspberry Pi Boot Process
 
@@ -19,14 +17,14 @@ The boot sequence is [as follows](https://www.raspberrypi.org/forums/viewtopic.p
 1. `bootcode.bin` turns on the SDRAM and loads `start.elf` into RAM
 1. `start.elf` parses `config.txt` to configure some aspects of the SoC
 1. `start.elf` loads `cmdline.txt`
-1. `start.elf` writes some ARM code to RAM that will be executed before jumping to the kernel
-1. `start.elf` loads `kernel.img` to address `0x8000` and releases the ARM CPU
+1. `start.elf` writes some ARM bootstrap code to RAM that will be executed before jumping to the kernel
+1. `start.elf` loads `kernel.img` to address `0x8000` and releases the ARM CPU to execute the bootstrap code
 
-SmartStart is the `kernel.img` file that is the first user-defined code that can be run.
+SmartStart compiles to `kernel.img`, and is the first user-written code that the Raspberry Pi runs. That is, without trying to write your own `bootcode.bin` or `start.elf` with zero documentation.
 
 ## Entry Point
 
-The code at `0x8000` is the entry point of the kernel. On multi-core architectures, all cores runs on system startup, but [the GPU puts code in RAM](https://github.com/dwelch67/raspberrypi/blob/master/multi00/README) that is executed before the reaching `0x8000`. This code puts cores other than 0 in a busy loop looking for values in specific memory locations to continue execution. These addresses are called Core 1/2/3 Mailbox 3 Set in [ARM Quad A7 core](https://www.raspberrypi.org/documentation/hardware/raspberrypi/bcm2836/QA7_rev3.4.pdf), but have nothing to do with the mailbox used to comunicate with the GPU.
+The code at `0x8000` is the entry point of the kernel. On multi-core architectures, all cores runs on system startup, but [the GPU puts bootstrap code in RAM](https://github.com/dwelch67/raspberrypi/blob/master/multi00/README) that is executed before reaching `0x8000`. On multi-core CPUs, this code puts all cores other than 0 in a busy loop looking for values in specific memory locations to continue execution. These addresses are called Core 1/2/3 Mailbox 3 Set in the [BCM2836 documentation](https://www.raspberrypi.org/documentation/hardware/raspberrypi/bcm2836/QA7_rev3.4.pdf), but have nothing to do with the mailbox used to comunicate with the GPU.
 
 Only core 0 reach the entry point, the other ones are released from the busy loop later by SmartStart. SmartStart begins by saving the pogram counter and [Current Program Status Register](http://infocenter.arm.com/help/topic/com.arm.doc.ddi0301h/I2837.html) (`CPSR`) into `r12` and `r11`, respectively, for later use.
 
@@ -40,21 +38,19 @@ Only core 0 reach the entry point, the other ones are released from the busy loo
 
 The `CSPR` register can be used to get/set the CPU mode and enable/disable the IRQ and FIQ interrupts. Bit 6 disables FIQ when set, and bit 7 disables IRQ when set. Bits 4-0 are the [CPU mode](http://www.keil.com/support/man/docs/armasm/armasm_dom1359731126962.htm) (more information about these modes can be found [here](https://en.wikipedia.org/wiki/ARM_architecture#CPU_modes)). All modes are priviledged except User.
 
-> I couldn't find the hypervisor mode value anywhere in the documentation.
+> I couldn't find the hypervisor mode value in the documentation.
 
-> ARM CPUs are set to supervidor mode when powered on AFAIK.
-
-> SmartStart seems to believe that both A7 and A53 boot in hypervisor mode, but I couldn't find any reference.
+> AFAIK, ARM CPUs are set to supervidor mode when powered on. SmartStart seems to believe that both A7 and A53 boot in hypervisor mode, but I couldn't find any reference.
 
 ## Entering Supervisor Mode
 
-SmartStart puts the core into supervisor mode if it's in hypervisor mode, taking the chance to disable both IRQ and FIQ. It does so by masking out the current CPU mode, and setting the desired one along with the IRQ and FIQ bits which will then disable these interruptions. The resulting value is put into the Saved Program Status Register (`SPSR`, which holds the value of `CPSR` prior to an exception), which will overwrite `CPSR` when the CPU switches to supervisor mode. `SPSR_cxsf` means the whole of `SPSR` will be updated: **C**ontrol, e**X**tension, **S**tatus, and **F**lags.
+SmartStart puts the core into supervisor mode if it's in hypervisor mode, taking the chance to disable both IRQ and FIQ. It does so by masking out the current CPU mode, and setting the desired one along with the IRQ and FIQ bits which will then disable these interruptions. The resulting value is put into the Saved Program Status Register (`SPSR`, which holds the value of `CPSR` prior to an exception), which will overwrite `CPSR` when the CPU switches to supervisor mode. `SPSR_cxsf` means [the control, extension, status, and flags fields of `SPSR` will be updated](http://infocenter.arm.com/help/topic/com.arm.doc.100076_0100_00_en/pge1425890666223.html).
 
 `msr ELR_hyp, lr` sets the link register of the hypervisor mode. In hypervisor mode, `eret` will load the program counter from `ELR_hyp` and `CPSR` from `SPSR_hyp`. Since `ELR_hyp` has the address of `.NotInHypMode` and `SPSR_hyp` has the supervisor CPU mode, the CPU will continue execution in supervisor mode at `.NotInHypMode`.
 
 > I believe this is only needed because the exception levels of hypervisor and supervisor modes are different. When changing modes that are of the same level, it's enough to just change `CPSR` directly.
 
-These two instructions aren't supported in ARMv6 mode, and thus are written directly in hexadecimal.
+These two instructions aren't supported by the GNU assembler in ARMv6 mode, and thus are written directly in hexadecimal.
 
 ```
 multicore_start:
@@ -97,9 +93,9 @@ To check which CPU is running the code, the value of the [Main ID Register](http
 
 > I don't know if other chip revisions were used on the Raspberry Pi boards, but I think it would be better to compare only the Part no field of the register.
 
-If the CPU is *not* an ARM1176JZF-S, the [Multiprocessor Affinity Register](http://infocenter.arm.com/help/topic/com.arm.doc.ddi0464f/BABHBJCI.html) (MPIDR) is used to determine which core is executing the code. Bits 1-0 are used to determine which of the four cores is running the code so the correct memory addresses are selected to setup the stacks.
+If the CPU is *not* an ARM1176JZF-S, the [Multiprocessor Affinity Register](http://infocenter.arm.com/help/topic/com.arm.doc.ddi0464f/BABHBJCI.html) (MPIDR) is used to determine which core is executing the code. Bits 1-0 are used to determine which of the four cores is running so the correct memory addresses are selected to setup the stacks.
 
-> Remember that for now only core 0 in multicore architectures is running. The other cores are locked in a busy loop waiting to be released.
+> Remember that for now only core 0 in multicore architectures is running, so for now only the stack for this core will be setup. The other cores are locked in a busy loop waiting to be released.
 
 ```
   ldr r2, =__SVC_stack_core0 ; r2 = __SVC_stack_core0
@@ -168,7 +164,7 @@ Next, SmartStart enables the [VFP](http://infocenter.arm.com/help/topic/com.arm.
 
 > I don't know what the differences are between secure and non-secure modes.
 
-> I wonder if leaving coprocessor 11 off for code that only use single precision can help save energy and lower the SoC temperature. I'm not sure this is supported.
+> I wonder if leaving coprocessor 11 off for code that only use single precision can help save energy and lower the SoC temperature. I don't know if this is allowed.
 
 ```
   mrc p15, 0, r0, c1, c1, 2 ; r0 = nsacr
@@ -209,7 +205,7 @@ After enabling VFP, SmartStart enables the L1 caches (instruction and data), and
 
 With the core in supervisor mode, VFP, L1 cache, and the branch predictor enabled, SmartStart puts all the cores except core 0 in wait mode. It begins by checking if the CPU is an ARM1176JZF-S or if the core is 0, in which case this code is ignored by jumping to `.cpu0_exit_multicore_park`.
 
-> Remember that for now only core 0 is running. The other cores have *not* been released yet.
+> Remember that for now only core 0 is running, the other cores have *not* been released yet.
 
 ```
   mrc p15, 0, r0, c0, c0, 0     ; r0 = midr
@@ -226,7 +222,9 @@ With the core in supervisor mode, VFP, L1 cache, and the branch predictor enable
                                 ; (don't put the core to sleep if core 0)
 ```
 
-For A7 and A53, SmartStart increments the number of available cores so it can be queried later, and jump to the spin loop at `SecondarySpin` that keeps the core in wait mode until made run programattically. This means cores 1 to 3 will be waiting again for a signal to run, just like they were before being released to be setup.
+For A7 and A53, SmartStart increments the number of available cores so it can be queried later, and jump to the spin loop at `SecondarySpin` that keeps the core in wait mode until programattically told to run. This means cores 1 to 3 will be waiting again for a signal to run, just like they were before being released to be setup.
+
+> This code will be executed only by cores 1 to 3 when they are released.
 
 ```
   ldr r1, =RPi_CoresReady ; r1 = &RPi_CoresReady
@@ -236,7 +234,7 @@ For A7 and A53, SmartStart increments the number of available cores so it can be
   b SecondarySpin         ; goto SecondarySpin
 ```
 
-`SecondarySpin` is just a busy loop that makes the cores wait for an address to execute in the mailboxes, but uses a `wfe` instruction which [puts the core to sleep](http://infocenter.arm.com/help/topic/com.arm.doc.100076_0100_00_en/pge1425917119639.html) until a `sev` instruction is executed, so the loop is not strictly busy. Note that `sev` [wakes up all cores](http://infocenter.arm.com/help/topic/com.arm.doc.100076_0100_00_en/pge1425906657222.html) sleeping on `wfe`, so the run address is checked for zero so only the intended core actually runs the code, and the other ones go back to `wfe`.
+`SecondarySpin` is just a busy loop that makes the cores wait for an address in the mailboxes to execute, but uses a `wfe` instruction which [puts the core to sleep](http://infocenter.arm.com/help/topic/com.arm.doc.100076_0100_00_en/pge1425917119639.html) until a `sev` instruction is executed so the loop is not strictly busy. Note that `sev` [wakes up all cores](http://infocenter.arm.com/help/topic/com.arm.doc.100076_0100_00_en/pge1425906657222.html) sleeping on `wfe` so the run address is checked for zero to make sure only the intended core actually runs, and the other ones go back to `wfe`.
 
 When an address is written to the mailbox and the core is woken up from `wfe`, SmartStart will set `r0` to zero, `r1` to the machine ID (read from address `3138` or `0xC42`), and `r2` to the ATAG address (read from address 0x100). They are received in C land as the first three parameters to the function as per the [ARM ABI](http://infocenter.arm.com/help/topic/com.arm.doc.subset.swdev.abi/index.html).
 
@@ -370,11 +368,11 @@ If the detection fails, the core is halted in a busy loop in `.pi_detect_fail`.
 .autodetect_done:
 ```
 
-> I believe it could set the base I/O address based on the value of MIDR.
+> It could set the base I/O address based on the value of MIDR since it's fixed for each Raspberry Pi model.
 
 ## Setting up the Exception Vectors
 
-To make use of IRQ and FIQ, the [exception vectors](http://infocenter.arm.com/help/topic/com.arm.doc.ddi0301h/Babfeega.html) must be set. They also handle exceptions like undefined instructions in the instruction stream. Each entry in the vector is a 32-bit value that is an ARM32 instruction, which will be executed when entering the corresponding exception mode. It's usual to use branch instructions in the vector.
+To make use of IRQ and FIQ, the [exception vectors](http://infocenter.arm.com/help/topic/com.arm.doc.ddi0301h/Babfeega.html) must be set. They also handle exceptions like undefined instructions found in the instruction stream. Each entry in the vector is a 32-bit value that is an ARM32 instruction, which will be executed when entering the corresponding exception mode. It's usual to use branch instructions in the vector.
 
 The vector is set by copying the entries from `_isr_Table` to their destination address 0, which is the default address the CPU will use for the vectors.
 
@@ -426,11 +424,13 @@ _interrupt_vector_h:             .word irq_handler_stub
 _fast_interrupt_vector_h:        .word fiq_handler_stub
 ```
 
-This vector will make the CPU restart the boot loader in case of a reset exception, will jump to `irq_handler_stub` in case of an IRQ, and to `fiq_handler_stub` in case of a FIQ. All other exceptions will make the core hang in an infinite loop at `hang`.
+This vector will make the CPU restart the boot loader in case of a reset exception, will jump to `irq_handler_stub` in case of an IRQ, and to `fiq_handler_stub` in case of a FIQ. All other exceptions will make the core hang in an infinite loop at `hang`, but could make the CPU also show a BSoD or something.
 
 ## Zeroing the .bss
 
 Before releasing the other cores, SmartStart zeroes the `bss` using the symbols `__bss_start__` and `__bss_end__`. These symbols are created by the linker via a special linker script used to link the kernel.
+
+Zeroing the `bss` is required when running C code, since all unitialized variables with static storage are implicitly initialized to all bytes 0, and these variables end up in the `bss` section. C code can depend on this and may fail to run properly if this section is not zeroed.
 
 ```
 .bss : {
@@ -469,8 +469,6 @@ The code that zeroes `.bss` is straighforward:
 
 .clear_bss_exit:
 ```
-
-> There are other ways to write the loop to clear the `.bss` that use less branches.
 
 ## Releasing the Cores
 
@@ -576,6 +574,8 @@ CoreExecuteFail:
 
 When the core returns from the given `CORECALLFUNC` function, it will wait again in the `SecondarySpin` loop for another function to run.
 
+> When a core is released from the `SecondarySpin` loop to run, register r0, r1, and r2 receive values that can be used in the C function as the first three 32-bit integer parameters. However, `CORECALLFUNC` is defined *not* to receive any parameters, and those values will be unavailable.
+
 ## Handling Interruptions
 
 The IRQ and FIQ handlers in assembly just prepare the environment to make a call to the C function set in the `RPi_IrqFuncAddr` variable. These handlers are called in their respective exception modes.
@@ -583,7 +583,8 @@ The IRQ and FIQ handlers in assembly just prepare the environment to make a call
 ```
 .weak irq_handler_stub
 irq_handler_stub:
-  sub lr, lr, #4           ; lr = lr - 4 (adjust the return address)
+  sub lr, lr, #4           ; lr = lr - 4 (adjust the return address, since it's
+                           ; off by 4 when the handler is called)
   srsfd sp!, #0x13         ; save lr_irq and spsp_irq onto the supervisor stack
 
   cps #0x13                ; enter supervisor mode
@@ -591,8 +592,10 @@ irq_handler_stub:
 
   mov r1, sp               ; r1 = sp
   and r1, r1, #4           ; r1 = r1 & 4
-  sub sp, sp, r1           ; sp = sp - r1 (align the stack to 8 bytes)
-  push {r1, lr}            ; push the alignment and the link register
+  sub sp, sp, r1           ; sp = sp - r1 (align the stack to 8 bytes, as per
+                           ; the ARM ABI)
+  push {r1, lr}            ; push the alignment and the link register (the
+                           ; will remain properly aligned)
 
   ldr r0, =RPi_IrqFuncAddr ; r0 = RPi_IrqFuncAddr
   ldr r0, [r0]             ; r0 = *(uint32_t*)r0 (get the C handler address)
@@ -608,9 +611,11 @@ no_irqset:
                            ; jump to lr
 ```
 
-`fiq_handler_stub` is identical to `irq_handler_stub`, except that it takes the C function hander address from `RPi_FiqFuncAddr` instead of `RPi_IrqFuncAddr`.
+`fiq_handler_stub` is identical to `irq_handler_stub`, except that it takes the C function hander address from `RPi_FiqFuncAddr` instead of `RPi_IrqFuncAddr`. SmartStart has some C code where these two variables are setup. The interrupts are also enabled in C land via a call to `EnableInterrupts`.
 
 > The FIQ handler could take advantage of the [banked FIQ registers](http://infocenter.arm.com/help/topic/com.arm.doc.ddi0301h/ch02s09s01.html), `r8` to `r14`, to avoid pushing values onto the stack.
+
+> I don't know why the interrupt handlers use `cps` to change the core mode, while `msr` was previously used.
 
 ## Helper Functions
 
@@ -656,4 +661,4 @@ isARM6:
 
 ## Conclusion
 
-Thanks for reading, this concludes the process SmartStart follows to start C code in supervisor mode in a multicore architecture. Despite some obvious opportunities for improvement, SmartStart was a great learning tool for me to understand how to setup the ARM CPU and make the transition to C land, and I hope this post helped you understand it as well.
+Thanks for reading, this concludes the process SmartStart follows to start C code in supervisor mode in a multicore architecture. Despite some obvious opportunities for improvement, SmartStart was a great learning tool for me, and I hope this post helped you understand it as well.
