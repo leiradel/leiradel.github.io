@@ -4,6 +4,6 @@ author: Andre Leiradella
 show_downloads: false
 google_analytics:
 theme: jekyll-theme-hacker
-email: andre@leiradella.com
+email: printf("%s@%s.com", "andre", "leiradella");
 twitter_username: leiradel
 github_username: leiradel
