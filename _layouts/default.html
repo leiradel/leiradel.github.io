@@ -13,13 +13,8 @@
 
     <header>
       <div class="container">
-        <table border="0" cellpadding="0" cellspacing="0"><tr><td>
-          <h1>{{ site.title | default: site.github.repository_name }}</h1>
-          <h2>{{ site.description | default: site.github.project_tagline }}</h2>
-        </td><td>
-          <a href="https://twitter.com/leiradel"><img src="{{ site.url }}/assets/images/Twitter_Social_Icon_Circle_White.png" /></a>
-          <a href="https://github.com/leiradel"><img src="{{ site.url }}/assets/images/GitHub-Mark-32px.png" /></a>
-        </td></tr></table>
+        <h1>{{ site.title | default: site.github.repository_name }}</h1>
+        <h2>{{ site.description | default: site.github.project_tagline }}</h2>
 
         <section id="downloads">
           {% if site.show_downloads %}
@@ -29,6 +24,10 @@
           {% endif %}
         </section>
       </div>
+      <nav>
+        <a href="https://twitter.com/leiradel"><img src="{{ site.url }}/assets/images/Twitter_Social_Icon_Circle_White.png" /></a>
+        <a href="https://github.com/leiradel"><img src="{{ site.url }}/assets/images/GitHub-Mark-32px.png" /></a>
+      </nav>
     </header>
 
     <div class="container">
