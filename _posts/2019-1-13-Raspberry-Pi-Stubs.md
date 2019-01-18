@@ -89,7 +89,7 @@ The first thing the code does is jump to `jmp_loader`. This is because we're in 
 osc:	.word 19200000
 ```
 
-This word is used to set the [Counter-timer Frequency Register](http://infocenter.arm.com/help/topic/com.arm.doc.ddi0464f/BABJHFFD.html) (CNTFRQ), which must be programmed to the clock frequency of the system counter. This register's purpose is just to be read by anyone wanting to know the frequency of the ARM generic timer clock, and does **not** change anything in hardware. More information can be found in the ARM Architecture Reference Manual, ARMv7-A and ARMv7-R edition, chapter B8 - The Generic Timer.
+This word is used to set the [Counter-timer Frequency Register](http://infocenter.arm.com/help/topic/com.arm.doc.ddi0464f/BABJHFFD.html) (CNTFRQ), which must be programmed to the clock frequency of the system counter. This register's purpose is just to be read by anyone wanting to know the frequency of the ARM generic timer clock, and does *not* change anything in hardware. More information can be found in the ARM Architecture Reference Manual, ARMv7-A and ARMv7-R edition, chapter B8 - The Generic Timer.
 
 > I couldn't find an authoritative source, but [anecdotal evidence](https://pinout.xyz/pinout/gpclk#) shows that the ARM generic timer is driven by a 19.2 MHz clock, which explains the value of `osc` in the stub.
 
@@ -302,9 +302,9 @@ The core that read an value different from zero in its Mailbox 3 Rd/Clr register
 
 > Core 0 has jumped to `9` long ago, with the kernel address in `r4`, making it run the kernel with the expected values in the registers as per the boot protocol.
 
-> I'm assuming a write to the Mailbox-clear registers will clear its content, since writes to Mailbox-set register are what set values in the registers. I'm also assuming any value written will clear the register, since the code is writing the same value that was read instead of writing 0.
+> A write to the Mailbox-clear registers will set its bits to 0, but only where the value written has its bits *set to 1*. Since the code writes to this registers the value that was just read from the corresponding read register, the result is that the mailbox is set to 0. Details about how these registers work can be found in the BCM2836 ARM-local peripherals, section 4.1 - Write-set / Write-clear registers.
 
-> The instruction used to jump to the address in the mailbox register is `bx` ([Branch and Echange](http://infocenter.arm.com/help/topic/com.arm.doc.100076_0100_00_en/pge1425889997181.html)), which will *not* set `lr`, the Link Register, with the return address. This means execution is not supposed to return here, and that each core will be parked in the stub only once and then will run forever unless parked again by user code. SmartStart.S does exactly that in its SecondarySpin loop.
+> The instruction used to jump to the address in the mailbox register is `bx` ([Branch and Exchange](http://infocenter.arm.com/help/topic/com.arm.doc.100076_0100_00_en/pge1425889997181.html)), which will *not* set `lr`, the Link Register, with the return address. This means execution is not supposed to return here, and that each core will be parked in the stub only once and then are supposed to run user code forever unless parked again also in user code. SmartStart.S does exactly that in its SecondarySpin loop.
 
 ```
 10:
@@ -325,3 +325,145 @@ kernel:	.word 0x0	@ kernel start address
 ```
 
 The last piece of the stub are just the variables used elsewhere in the code that can be tweaked by the GPU, just like in the `armstub.S` stub.
+
+## `armstub8.S`
+
+```
+#define BIT(x) (1 << (x))
+
+#define LOCAL_CONTROL		0x40000000
+#define LOCAL_PRESCALER		0x40000008
+
+#define OSC_FREQ		19200000
+
+#define SCR_RW			BIT(10)
+#define SCR_HCE			BIT(8)
+#define SCR_SMD			BIT(7)
+#define SCR_RES1_5		BIT(5)
+#define SCR_RES1_4		BIT(4)
+#define SCR_NS			BIT(0)
+#define SCR_VAL \
+    (SCR_RW | SCR_HCE | SCR_SMD | SCR_RES1_5 | SCR_RES1_4 | SCR_NS)
+
+#define CPUECTLR_EL1		S3_1_C15_C2_1
+#define CPUECTLR_EL1_SMPEN	BIT(6)
+
+#define SPSR_EL3_D		BIT(9)
+#define SPSR_EL3_A		BIT(8)
+#define SPSR_EL3_I		BIT(7)
+#define SPSR_EL3_F		BIT(6)
+#define SPSR_EL3_MODE_EL2H	9
+#define SPSR_EL3_VAL \
+    (SPSR_EL3_D | SPSR_EL3_A | SPSR_EL3_I | SPSR_EL3_F | SPSR_EL3_MODE_EL2H)
+
+.globl _start
+_start:
+	/*
+	 * LOCAL_CONTROL:
+	 * Bit 9 clear: Increment by 1 (vs. 2).
+	 * Bit 8 clear: Timer source is 19.2MHz crystal (vs. APB).
+	 */
+	mov x0, LOCAL_CONTROL
+	str wzr, [x0]
+	/* LOCAL_PRESCALER; divide-by (0x80000000 / register_val) == 1 */
+	mov w1, 0x80000000
+	str w1, [x0, #(LOCAL_PRESCALER - LOCAL_CONTROL)]
+
+	/* Set up CNTFRQ_EL0 */
+	ldr x0, =OSC_FREQ
+	msr CNTFRQ_EL0, x0
+
+	/* Set up CNTVOFF_EL2 */
+	msr CNTVOFF_EL2, xzr
+
+	/* Enable FP/SIMD */
+	/* All set bits below are res1; bit 10 (TFP) is set to 0 */
+	mov x0, #0x33ff
+	msr CPTR_EL3, x0
+
+	/* Set up SCR */
+	mov x0, #SCR_VAL
+	msr SCR_EL3, x0
+
+	/* Set SMPEN */
+	mov x0, #CPUECTLR_EL1_SMPEN
+	msr CPUECTLR_EL1, x0
+
+	/*
+	 * Set up SCTLR_EL2
+	 * All set bits below are res1. LE, no WXN/I/SA/C/A/M
+	 */
+	ldr x0, =0x30c50830
+	msr SCTLR_EL2, x0
+
+	/* Switch to EL2 */
+	mov x0, #SPSR_EL3_VAL
+	msr spsr_el3, x0
+	adr x0, in_el2
+	msr elr_el3, x0
+	eret
+in_el2:
+
+	mrs x6, MPIDR_EL1
+	and x6, x6, #0x3
+	cbz x6, primary_cpu
+
+	adr x5, spin_cpu0
+secondary_spin:
+	wfe
+	ldr x4, [x5, x6, lsl #3]
+	cbz x4, secondary_spin
+	mov x0, #0
+	b boot_kernel
+
+primary_cpu:
+	ldr w4, kernel_entry32
+	ldr w0, dtb_ptr32
+
+boot_kernel:
+	mov x1, #0
+	mov x2, #0
+	mov x3, #0
+	br x4
+
+.ltorg
+
+.org 0xd8
+.globl spin_cpu0
+spin_cpu0:
+	.quad 0
+.org 0xe0
+.globl spin_cpu1
+spin_cpu1:
+	.quad 0
+.org 0xe8
+.globl spin_cpu2
+spin_cpu2:
+	.quad 0
+.org 0xf0
+.globl spin_cpu3
+spin_cpu3:
+	# Shared with next two symbols/.word
+	# FW clears the next 8 bytes after reading the initial value, leaving
+	# the location suitable for use as spin_cpu3
+.org 0xf0
+.globl stub_magic
+stub_magic:
+	.word 0x5afe570b
+.org 0xf4
+.globl stub_version
+stub_version:
+	.word 0
+.org 0xf8
+.globl dtb_ptr32
+dtb_ptr32:
+	.word 0x0
+.org 0xfc
+.globl kernel_entry32
+kernel_entry32:
+	.word 0x0
+
+.org 0x100
+.globl dtb_space
+dtb_space:
+```
