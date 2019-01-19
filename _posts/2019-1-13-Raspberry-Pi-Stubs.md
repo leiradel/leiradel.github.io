@@ -89,7 +89,7 @@ The first thing the code does is jump to `jmp_loader`. This is because we're in 
 osc:	.word 19200000
 ```
 
-This word is used to set the [Counter-timer Frequency Register](http://infocenter.arm.com/help/topic/com.arm.doc.ddi0464f/BABJHFFD.html) (CNTFRQ), which must be programmed to the clock frequency of the system counter. This register's purpose is just to be read by anyone wanting to know the frequency of the ARM generic timer clock, and does *not* change anything in hardware. More information can be found in the ARM Architecture Reference Manual, ARMv7-A and ARMv7-R edition, chapter B8 - The Generic Timer.
+This word is used to set the [Counter-timer Frequency Register](http://infocenter.arm.com/help/topic/com.arm.doc.ddi0464f/BABJHFFD.html) (CNTFRQ), which must be programmed to the clock frequency of the system counter. This register's purpose is just to be read by anyone wanting to know the frequency of the ARM generic timer clock, and does *not* change anything in hardware. More information can be found in the [ARM Architecture Reference Manual, ARMv7-A and ARMv7-R edition](https://static.docs.arm.com/ddi0406/cd/DDI0406C_d_armv7ar_arm.pdf), chapter B8 - The Generic Timer.
 
 > I couldn't find an authoritative source, but [anecdotal evidence](https://pinout.xyz/pinout/gpclk#) shows that the ARM generic timer is driven by a 19.2 MHz clock, which explains the value of `osc` in the stub.
 
@@ -188,7 +188,9 @@ When compiled for the Cortex-A53, the [CPU Extended Control Register](http://inf
 	mcr p15, 0, r0, c14, c3, 1 @ CNTV_CTL (enable=1, imask=0)
 ```
 
-The stub enables the timer by setting the `ENABLE` bit of the [Counter PL1 Virtual Timer Control Register](http://infocenter.arm.com/help/topic/com.arm.doc.ddi0464f/BABIDBIJ.html) (CNTV_CTL, see the ARM Architecture Reference Manual, ARMv7-A and ARMv7-R edition, section B4.1.31 - CNTV_CTL, Virtual Timer Control register, VMSA) to 1, and unmasks timer interrupts by setting the `IMASK` bit to 0. Notice that IRQ and FIQ are still disabled, so timer interrupts won't actually make the processor jump to the exception vectors yet.
+The stub enables the timer by setting the `ENABLE` bit of the [Counter PL1 Virtual Timer Control Register](http://infocenter.arm.com/help/topic/com.arm.doc.ddi0464f/BABIDBIJ.html) (CNTV_CTL [1]) to 1, and unmasks timer interrupts by setting the `IMASK` bit to 0. Notice that IRQ and FIQ are still disabled, so timer interrupts won't actually make the processor jump to the exception vectors yet.
+
+> [1] [ARM Architecture Reference Manual, ARMv7-A and ARMv7-R edition](https://static.docs.arm.com/ddi0406/cd/DDI0406C_d_armv7ar_arm.pdf), section B4.1.31 - CNTV_CTL, Virtual Timer Control register, VMSA.
 
 ```
 @ set to non-sec
@@ -355,7 +357,11 @@ The last piece of the stub are just the variables used elsewhere in the code tha
 #define SPSR_EL3_MODE_EL2H	9
 #define SPSR_EL3_VAL \
     (SPSR_EL3_D | SPSR_EL3_A | SPSR_EL3_I | SPSR_EL3_F | SPSR_EL3_MODE_EL2H)
+```
 
+The 64-bit stub for the Cortex-A53 begins with some macro definitions, which purpose we'll see as they are used in the code.
+
+```
 .globl _start
 _start:
 	/*
@@ -368,23 +374,74 @@ _start:
 	/* LOCAL_PRESCALER; divide-by (0x80000000 / register_val) == 1 */
 	mov w1, 0x80000000
 	str w1, [x0, #(LOCAL_PRESCALER - LOCAL_CONTROL)]
+```
 
+The first thing this stub does is configure how the timer ticks. The `wzr` register is the lower 32 bits of `xzr`, a 64-bit special register that ignores writes and always reads as 0. The `str` instruction will then write a 0 to `LOCAL_CONTROL` (Control register [1]) which sets the timer's clock pre-scaler source to the crystal clock instead of the [Advanced Peripheral Bus](http://infocenter.arm.com/help/index.jsp?topic=/com.arm.doc.ihi0024c/index.html) clock, and the timer increment to 1.
+
+The stub then sets the pre-scaler to 1 by writing `0x80000000` to `LOCAL_PRESCALER` (Core timer pre-scaler [2].)
+
+> [1] [BCM2836 ARM-local peripherals](https://www.raspberrypi.org/documentation/hardware/raspberrypi/bcm2836/QA7_rev3.4.pdf), section 4.2 - Control register.
+
+> [2] BCM2836 ARM-local peripherals, section 4.3 - Core timer register
+
+```
 	/* Set up CNTFRQ_EL0 */
 	ldr x0, =OSC_FREQ
 	msr CNTFRQ_EL0, x0
 
 	/* Set up CNTVOFF_EL2 */
 	msr CNTVOFF_EL2, xzr
+```
 
+Afterwards, the stub writes the timer clock frequency, 19.2 MHz, to the `CNTFRQ_EL0` register (Counter-timer Frequency register [3].) This register is the same register as the ARMv7 `CNTFRQ`, and accessible in the Exception Level 0, which means unprivileged access.
+
+The code then sets the `CNTVOFF_EL2` register (Counter-timer Virtual Offset [4]) to zero. This register holds an offset that is applied to the timer when it's read via `CNTVCT_EL0` (Counter-timer Virtual Count [5].)
+
+> Information about the ARMv8 Exception Levels can be found [here](http://infocenter.arm.com/help/topic/com.arm.doc.ddi0500j/CHDHJIJG.html).
+
+> `CNTVOFF_EL2` can only be set in Exception Level 2, the hypervisor, and can be used to provide a consistent timer from the perspective of each one of the guest virtual machines running on a host OS.
+
+> [3] [ARM Architecture Reference Manual, ARMv8, for ARMv8-A architecture profile](https://static.docs.arm.com/ddi0487/da/DDI0487D_a_armv8_arm.pdf), section D12.8.1 - CNTFRQ_EL0, Counter-timer Frequency register.
+
+> [4] ARM Architecture Reference Manual, ARMv8, for ARMv8-A architecture profile, section D12.8.27 - CNTVOFF_EL2, Counter-timer Virtual Offset register.
+
+> [5] ARM Architecture Reference Manual, ARMv8, for ARMv8-A architecture profile, section D12.8.26 - CNTVCT_EL0, Counter-timer Virtual Count register.
+
+```
 	/* Enable FP/SIMD */
 	/* All set bits below are res1; bit 10 (TFP) is set to 0 */
 	mov x0, #0x33ff
 	msr CPTR_EL3, x0
+```
 
+The stub then sets bit 10 of `CPTR_EL3` (Architectural Feature Trap Register [6]), `TFP`, to 0, enabling [Scalable Vector Extention](https://developer.arm.com/products/software-development-tools/hpc/sve), [Advanced SIMD and floating-point functionality](http://infocenter.arm.com/help/topic/com.arm.doc.ddi0500j/CHDFIBCA.html) instructions to Exception Level 3 in secure and non-secure modes, 32 and 64 bits states.
+
+> [6] [ARM Architecture Reference Manual, ARMv8, for ARMv8-A architecture profile](https://static.docs.arm.com/ddi0487/da/DDI0487D_a_armv8_arm.pdf), section D12.2.31 - CPTR_EL3, Architectural Feature Trap Register (EL3)
+
+```
 	/* Set up SCR */
 	mov x0, #SCR_VAL
 	msr SCR_EL3, x0
+```
 
+The code continues by configuring `SCR_EL3` (Secure Configuration Register [7]) as follows:
+
+|Bit|Name|Value|Effect|
+|---|---|---|---|
+|0|`NS`|1|Sets Exception Levels 2 and below to non-secure|
+|1|`IRQ`|0|Does not route IRQ interrupts to EL3|
+|2|`FIQ`|0|Does not route FIQ interrupts to EL3|
+|3|`EA`|0|Does not route ABT interrupts to EL3|
+|7|`SMD`|1|Disables `smc` instructions at EL1 and above|
+|8|`HCE`|1|Enables `hvc` ([Hypervisor Call](http://infocenter.arm.com/help/topic/com.arm.doc.100076_0100_00_en/pge1425890193980.html)) instructions at EL1, EL2, and EL3|
+|9|`SIF`|0|Allows instruction fetches from non-secure memory while in the secure state|
+|10|`RW`|1|Sets the state of lower Exception Levels to AArch64|
+
+> Other bits control the required Exception Level to access system registers.
+
+> [7] [ARM Architecture Reference Manual, ARMv8, for ARMv8-A architecture profile](https://static.docs.arm.com/ddi0487/da/DDI0487D_a_armv8_arm.pdf), section D12.2.99 - SCR_EL3, Secure Configuration Register.
+
+```
 	/* Set SMPEN */
 	mov x0, #CPUECTLR_EL1_SMPEN
 	msr CPUECTLR_EL1, x0
