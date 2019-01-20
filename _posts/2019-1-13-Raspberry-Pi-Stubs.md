@@ -23,7 +23,7 @@ Each stub works with a corresponding kernel image:
 
 In the previous post, we heard of a *machine ID*. I didn't know what that was at the time, but further research to write this post taught me about the ARM Linux Boot Protocol, which ARM machines must follow in order to boot a Linux kernel.
 
-Since the official operating system for the Raspberry Pi boards is Raspbian, the stubs studied here will put the CPU in the state required by the protocol, and pass to the kernel the information stated in the protocol.
+Since the official operating system for the Raspberry Pi boards is Raspbian, the stubs studied here will put the CPU in the state required by the Linux Boot protocol, and pass to the kernel the information stated in the protocol.
 
 ### The ARM boot protocol
 
@@ -31,7 +31,7 @@ Since the official operating system for the Raspberry Pi boards is Raspbian, the
 
 * `r0` is set to zero
 * `r1` is set to the [ARM Linux Machine Type](http://www.arm.linux.org.uk/developer/machines/)
-* `r2` is set to the address of the [ATAG_CORE](http://www.simtec.co.uk/products/SWLINUX/files/booting_article.html) tag of the [Device Tree](https://elinux.org/Device_Tree_Reference) blob
+* `r2` is set to the address of the [ATAG_CORE](http://www.simtec.co.uk/products/SWLINUX/files/booting_article.html) tag or the [Device Tree](https://elinux.org/Device_Tree_Reference) blob
 
 ### The AArch64 boot protocol
 
@@ -48,7 +48,7 @@ The required CPU state for both protocols is detailed in their documentation.
 
 The `armstub.S` stub is very simple.
 
-> I've removed the [license](https://opensource.org/licenses/BSD-3-Clause) text from the listings here for the sake of brevity.
+> I've removed the [license](https://opensource.org/licenses/BSD-3-Clause) text from the listings here.
 
 ```
 .section .init
@@ -79,7 +79,7 @@ It's interesting to notice that `r2` and `pc` aren't really set to 0. The `0x5af
 
 ## `armstub7.S`
 
-The 32-bit stub for the Cortex CPUs a bit more complex. Part of the code is compiled differently depending on the `BCM2710`, which is defined for the Cortex-A53 CPU running on 32-bit mode.
+The 32-bit stub for the Cortex CPUs a bit more complex. Part of the code is compiled differently depending on the `BCM2710` macro, which is defined for the Cortex-A53 CPU running on 32-bit mode.
 
 ### Architecture Extensions
 
@@ -108,7 +108,7 @@ The first thing the code does is jump to `jmp_loader`. This is because we're in 
 osc:	.word 19200000
 ```
 
-This word is used to set the [Counter-timer Frequency Register](http://infocenter.arm.com/help/topic/com.arm.doc.ddi0464f/BABJHFFD.html) (CNTFRQ), which must be programmed to the clock frequency of the system counter. This register's purpose is just to be read by anyone wanting to know the frequency of the ARM generic timer clock, and does *not* change anything in hardware. More information can be found in the [ARM Architecture Reference Manual, ARMv7-A and ARMv7-R edition](https://static.docs.arm.com/ddi0406/cd/DDI0406C_d_armv7ar_arm.pdf), chapter B8 - The Generic Timer.
+This word is used to set the [Counter-timer Frequency Register](http://infocenter.arm.com/help/topic/com.arm.doc.ddi0464f/BABJHFFD.html) (`CNTFRQ`), which must be programmed to the clock frequency of the system counter. This register's purpose is just to be read by anyone wanting to know the frequency of the ARM generic timer clock, and does *not* change anything in hardware. More information can be found in the [ARM Architecture Reference Manual, ARMv7-A and ARMv7-R edition](https://static.docs.arm.com/ddi0406/cd/DDI0406C_d_armv7ar_arm.pdf), chapter B8 - The Generic Timer.
 
 > I couldn't find an authoritative source, but [anecdotal evidence](https://pinout.xyz/pinout/gpclk#) shows that the ARM generic timer is driven by a 19.2 MHz clock, which explains the value of `osc` in the stub.
 
@@ -120,9 +120,9 @@ _secure_monitor:
 	mcr	p15, 0, r1, c1, c1, 0		@ write SCR (with NS bit set)
 ```
 
-After `b jmp_loader` and `osc: .word 19200000`, were at address `8`, where the Software Interrupt (SWI) handler must be coded. Normally this would be a branch, but since the other positions in the vector aren't used by the stub, the handler is coded directly here.
+After `b jmp_loader` and `osc: .word 19200000`, we are at address `8`, where the Software Interrupt (SWI) handler must be coded. Normally this would be a branch, but since the other positions in the vector aren't used by the stub, the handler is coded directly here.
 
-The handler starts setting the [Secure Configuration Register](http://infocenter.arm.com/help/topic/com.arm.doc.ddi0464f/BABGIHHJ.html) (SCR) to `0x131` (`0b100110001`), changing the CPU as follows:
+The handler starts setting the [Secure Configuration Register](http://infocenter.arm.com/help/topic/com.arm.doc.ddi0464f/BABGIHHJ.html) (`SCR`) to `0x131` (`0b100110001`), changing the CPU as follows:
 
 |Bit|Name|Value|Effect|
 |---|---|---|---|
@@ -130,7 +130,7 @@ The handler starts setting the [Secure Configuration Register](http://infocenter
 |1|`IRQ`|0|Runs the IRQ handler in the IRQ exception level|
 |2|`FIQ`|0|Runs the FIQ handler in the FIQ exception level|
 |3|`EA`|0|Runs the ABT handler in the ABT exception level|
-|4|`FW`|1|Makes the `F` bit in [Current Program Status Register](http://infocenter.arm.com/help/topic/com.arm.doc.ddi0301h/I2837.html) (CPSR) writable in non-secure states|
+|4|`FW`|1|Makes the `F` bit in [Current Program Status Register](http://infocenter.arm.com/help/topic/com.arm.doc.ddi0301h/I2837.html) (`CPSR`) writable in non-secure states|
 |5|`AW`|1|Makes the `A` bit in `CPSR` writable in non-secure states|
 |6|`nET`|0|*Not implemented*|
 |7|`SCD`|0|Enables the `smc` ([Secure Monitor Call](http://infocenter.arm.com/help/topic/com.arm.doc.100076_0100_00_en/pge1425910897272.html)) instruction in non-secure states|
@@ -139,14 +139,14 @@ The handler starts setting the [Secure Configuration Register](http://infocenter
 
 The `F` and `A` bits in `CPSR` are used to enable and disable FIQ and ABT exceptions.
 
-### SPSR Configuration
+### `SPSR` Configuration
 
 ```
 	movw	r0, #0x1da			@ Set HYP_MODE | F_BIT | I_BIT | A_BIT
 	msr     spsr_cxfs, r0                   @ Set full SPSR
 ```
 
-Continuing with the SWI handler, all fields in the Saved Program Status Register (SPSR, which holds the value of `CPSR` prior to an exception) are updated to `0x1da` (`0b111011010`). `SPSR` will then be configured as follows:
+Continuing with the SWI handler, all fields in the Saved Program Status Register (`SPSR`, which holds the value of `CPSR` prior to an exception) are updated to `0x1da` (`0b111011010`). `SPSR` will then be configured as follows:
 
 |Bit|Name|Value|Effect|
 |---|---|---|---|
@@ -188,7 +188,7 @@ jmp_loader:
 	mcr p15, 0, r0, c1, c0, 0 @ Write System Control Register
 ```
 
-The stub starts by enabling L1 instruction and data caches by setting the corresponding bits in the [System Control Register](http://infocenter.arm.com/help/topic/com.arm.doc.ddi0464f/BABJAHDA.html), `I` and `C` respectively.
+The stub starts by enabling L1 instruction and data caches by setting the corresponding bits in the [System Control Register](http://infocenter.arm.com/help/topic/com.arm.doc.ddi0464f/BABJAHDA.html) (`SCTLR`), `I` and `C` respectively.
 
 > Interestingly, the ARM Linux Boot protocol states that, while the instruction cache may be on or off, the data cache *must* be off when execution reaches the kernel.
 
@@ -206,9 +206,9 @@ The stub starts by enabling L1 instruction and data caches by setting the corres
 .endif
 ```
 
-The stub then changes the [Auxiliary Control Register](http://infocenter.arm.com/help/topic/com.arm.doc.ddi0464f/BABGHIBG.html) (ACTLR), if compiled for the Cortex-A7. It sets the `SMP` bit of the register, which enables cache coherency.
+The stub then changes the [Auxiliary Control Register](http://infocenter.arm.com/help/topic/com.arm.doc.ddi0464f/BABGHIBG.html) (`ACTLR`), if compiled for the Cortex-A7. It sets the `SMP` bit of the register, which enables cache coherency.
 
-When compiled for the Cortex-A53, the [CPU Extended Control Register](http://infocenter.arm.com/help/topic/com.arm.doc.ddi0500j/BABGHHEJ.html) (CPUECTLR) is changed to set the `SMPEN` bit to 1, which does the same thing for this CPU.
+When compiled for the Cortex-A53, the [CPU Extended Control Register](http://infocenter.arm.com/help/topic/com.arm.doc.ddi0500j/BABGHHEJ.html) (`CPUECTLR`) is changed to set the `SMPEN` bit to 1, which does the same thing for this CPU.
 
 > In both cases the documentation says cache coherency must be enabled before the caches are enabled, which is *not* what the stub does.
 
@@ -219,7 +219,7 @@ When compiled for the Cortex-A53, the [CPU Extended Control Register](http://inf
 	mcr p15, 0, r0, c14, c3, 1 @ CNTV_CTL (enable=1, imask=0)
 ```
 
-The stub enables the virtual timer by setting the `ENABLE` bit of the Counter PL1 Virtual Timer Control Register (CNTV_CTL [1]) to 1, and unmasks timer interrupts by setting the `IMASK` bit to 0. Notice that IRQ and FIQ are still disabled, so timer interrupts won't actually make the processor jump to the exception vectors yet.
+The stub enables the virtual timer by setting the `ENABLE` bit of the Counter PL1 Virtual Timer Control Register (`CNTV_CTL` [1]) to 1, and unmasks timer interrupts by setting the `IMASK` bit to 0. Notice that IRQ and FIQ are still disabled, so timer interrupts won't actually make the processor jump to the exception vectors yet.
 
 > [1] [ARM Architecture Reference Manual, ARMv7-A and ARMv7-R edition](https://static.docs.arm.com/ddi0406/cd/DDI0406C_d_armv7ar_arm.pdf), section B4.1.31 - CNTV_CTL, Virtual Timer Control register, VMSA.
 
@@ -231,7 +231,7 @@ The stub enables the virtual timer by setting the `ENABLE` bit of the Counter PL
 	mcr	p15, 0, r1, c1, c1, 2		@ NSACR = all copros to non-sec
 ```
 
-Permission to the [VFP](http://infocenter.arm.com/help/topic/com.arm.doc.ddi0301h/Chdbgjeg.html) (coprocessors 10 for single precison, and 11 for double precision), as well as some other features, in non-secure mode is granted by writing `0x63fff` in the [Non-Secure Access Control Register](http://infocenter.arm.com/help/topic/com.arm.doc.ddi0464f/BABGCFFJ.html) (NSACR.)
+Permission to the [VFP](http://infocenter.arm.com/help/topic/com.arm.doc.ddi0301h/Chdbgjeg.html) (coprocessors 10 for single precison, and 11 for double precision), as well as some other features, in non-secure mode is granted by writing `0x63fff` in the [Non-Secure Access Control Register](http://infocenter.arm.com/help/topic/com.arm.doc.ddi0464f/BABGCFFJ.html) (`NSACR`).
 
 ### Set the Timer Frequency
 
@@ -250,7 +250,7 @@ The value of the ARM generic timer clock, 19.2 MHz, is written to `CNTFRQ`.
 	mcr	p15, 0, r1, c12, c0, 1		@ set MVBAR to secure vectors
 ```
 
-The stub sets the value of Monitor Vector Base Address Register (MVBAR [2]) Any exception taken in monitor mode will use the exception vectors defined at the start of the stub.
+The stub sets the value of Monitor Vector Base Address Register (`MVBAR` [2]) Any exception taken in monitor mode will use the exception vectors defined at the start of the stub.
 
 > [2] [ARM Architecture Reference Manual, ARMv7-A and ARMv7-R edition](https://static.docs.arm.com/ddi0406/cd/DDI0406C_d_armv7ar_arm.pdf), section B4.1.107 - MVBAR, Monitor Vector Base Address Register, Security Extensions.
 
@@ -258,7 +258,7 @@ The stub sets the value of Monitor Vector Base Address Register (MVBAR [2]) Any 
 	mrc	p15, 0, ip, c12, c0, 0		@ save secure copy of VBAR
 ```
 
-The current value of the Vector Base Address Register (VBAR [3]) is saved to the `ip` register ([which is the `r12` register](http://infocenter.arm.com/help/topic/com.arm.doc.dui0473m/dom1359731136117.html)) to be used later.
+The current value of the Vector Base Address Register (`VBAR` [3]) is saved to the `ip` register ([which is the `r12` register](http://infocenter.arm.com/help/topic/com.arm.doc.dui0473m/dom1359731136117.html)) to be used later.
 
 > [3] [ARM Architecture Reference Manual, ARMv7-A and ARMv7-R edition](https://static.docs.arm.com/ddi0406/cd/DDI0406C_d_armv7ar_arm.pdf), section B4.1.156 - VBAR, Vector Base Address Register, Security Extensions.
 
@@ -269,9 +269,9 @@ The current value of the Vector Base Address Register (VBAR [3]) is saved to the
 	smc	#0				@ call into MONITOR mode
 ```
 
-The stub then executes a `isb` ([Instruction Synchronization Barrier](http://infocenter.arm.com/help/topic/com.arm.doc.100076_0100_00_en/pge1425890205000.html)), which flushes the instruction pipeline, making sure that subsequent instructions come from the cache or RAM. It's necessary because the next instruction, `smc` will jump to the SWI handler, which location depends on the value of `MVBAR` since we're in secure mode. Since the instruction that sets `MVBAR` was just issued, `isb` makes sure it is completed before `smc` is executed.
+The stub then executes a `isb` ([Instruction Synchronization Barrier](http://infocenter.arm.com/help/topic/com.arm.doc.100076_0100_00_en/pge1425890205000.html)), which flushes the instruction pipeline, making sure that subsequent instructions are read from the cache or RAM. It's necessary because the next instruction, `smc` will jump to the SWI handler, which location depends on the value of `MVBAR` (since we're in secure mode). Since the instruction that sets `MVBAR` was just issued, `isb` makes sure it is completed before `smc` is executed.
 
-So, `smc #0` then runs the SWI handler, which will prepare the environment and switch the processor to non-secure mode.
+`smc #0` runs the SWI handler, which will prepare the environment and switch the processor to non-secure mode.
 
 ### Non-Secure Vector Base
 
@@ -296,7 +296,7 @@ The stub is almost jumping into the kernel, so the kernel address is put into th
 	beq     9f
 ```
 
-The [Multiprocessor Affinity Register](http://infocenter.arm.com/help/topic/com.arm.doc.ddi0464f/BABHBJCI.html) (MPIDR) is read into the `r0` register. MPIDR has the CPU ID field, which uniquely identifies the core that is currently running the code. For both Cortex CPUs here, this is a value between 0 and 3. `ubfx` ([Unsigned Bit Field Extract](http://infocenter.arm.com/help/topic/com.arm.doc.100076_0100_00_en/pge1425915375380.html)) isolates the CPU ID field, and then the stub jumps to `9` (the `f` means it's a forward jump) if this is the 0th core, which will then make it jump to the address in `r4` as we will see later. Other cores will continue running the code below.
+The [Multiprocessor Affinity Register](http://infocenter.arm.com/help/topic/com.arm.doc.ddi0464f/BABHBJCI.html) (`MPIDR`) is read into the `r0` register. `MPIDR` has the `CPU ID` field, which uniquely identifies the core that is currently running the code. For both Cortex CPUs here, this is a value between 0 and 3. `ubfx` ([Unsigned Bit Field Extract](http://infocenter.arm.com/help/topic/com.arm.doc.100076_0100_00_en/pge1425915375380.html)) isolates the `CPU ID` field, and then the stub jumps to `9` (the `f` means it's a forward jump) if this is the 0th core, which will then make it jump to the address in `r4` as we will see later. Other cores will continue running the code below.
 
 > At first I thought the branch instruction could encode a static prediction of it being taken or not, by using `f` for forward jump, and `b` for backwards jump. Some CPUs statically predict forward branches as *not taken*, and backward branches as *taken*. The manual for the branch instruction however [doesn't mention static branch prediction](http://infocenter.arm.com/help/topic/com.arm.doc.100076_0100_00_en/pge1425889934568.html).
 
@@ -321,11 +321,11 @@ Next the stub calculates `1 << cpu_id` and tests it against the `0xff` mask. If 
 	add	r5, #(0x400000CC-0x4000008C)	@ mbox
 ```
 
-The stub loads `mbox` (`0x4000008C`) into `r5` and adds `0x40` to it, which results in `0x400000CC`. This serves as the base address for the mailbox register (see [BCM2836 ARM-local peripherals](https://www.raspberrypi.org/documentation/hardware/raspberrypi/bcm2836/QA7_rev3.4.pdf), section 4.8 - Core Mailboxes) that will be used below to compute the address of the specific register to wakeup the core. `r3` is set to 0 to be used inside the park loop.
+The stub loads `mbox` (`0x4000008C`) into `r5` and adds `0x40` to it, which results in `0x400000CC`. This serves as the base address for the Core Mailbox registers (see [BCM2836 ARM-local peripherals](https://www.raspberrypi.org/documentation/hardware/raspberrypi/bcm2836/QA7_rev3.4.pdf), section 4.8 - Core Mailboxes) that will be used below to compute the address of the specific register to wakeup the core. `r3` is set to 0 to be used inside the park loop.
 
 > These mailboxes aren't related to the BCM2835 ARM mailboxes 0 and 1, of which 0 is used to [talk to the VideoCore](https://github.com/raspberrypi/firmware/wiki) processor.
 
-> In the previous post, I've referred to these mailboxes as *memory*, but they're in fact a set of memory mapped registers with different addresses to set and to read/clear them. The fact that their addresses are after `0x40000000`, bigger than the last RAM physical address for the CPU, already shows that they couldn't be just fancy names to RAM locations.
+> In the previous post, I've referred to these mailboxes as *memory*, but they're in fact a set of memory mapped registers with different addresses to set and to read/clear them. The fact that their addresses are after `0x40000000`, bigger than the last physical RAM address, already shows that they couldn't be just RAM locations.
 
 ### Mailbox Watch Loop
 
@@ -337,11 +337,11 @@ The stub loads `mbox` (`0x4000008C`) into `r5` and adds `0x40` to it, which resu
 	beq	1b
 ```
 
-This is the park loop, where cores 1 to 3 wait for an address to run. `wfe` ([Wait For Event](http://infocenter.arm.com/help/topic/com.arm.doc.100076_0100_00_en/pge1425917119639.html)) will suspend the core until an event external to the core happens. One of these events is the execution of the `sev` ([Set Event](http://infocenter.arm.com/help/topic/com.arm.doc.100076_0100_00_en/pge1425906657222.html)) instruction by another core.
+This is the park loop, where cores 1 to 3 wait for an address to run. `wfe` ([Wait For Event](http://infocenter.arm.com/help/topic/com.arm.doc.100076_0100_00_en/pge1425917119639.html)) will suspend the core until an event external to the core happens. One of these events is the execution of the `sev` ([Set Event](http://infocenter.arm.com/help/topic/com.arm.doc.100076_0100_00_en/pge1425906657222.html)) instruction by another core, which the kernel can use to release these cores.
 
-The `ldr` instruction computes `r4 = *(uint32_t*)(r5 + r0 * 16)`, which will put in `r4` the contents of one of the registers Core 1 Mailbox 3 Rd/Clr, Core 2 Mailbox 3 Rd/Clr, or Core 3 Mailbox 3 Rd/Clr. These registers hold the value written to the corresponding Core X Mailbox 3 Set register.
+The `ldr` instruction computes `r4 = *(uint32_t*)(r5 + r0 * 16)`, which will put in `r4` the contents of one of the registers `Core 1 Mailbox 3 Rd/Clr`, `Core 2 Mailbox 3 Rd/Clr`, or `Core 3 Mailbox 3 Rd/Clr`. These registers hold the value written to the corresponding `Core X Mailbox 3 Set` register.
 
-The value read from the Mailbox 3 Rd/Clr register is tested, and the core jumps back to `1` and to the `wfe` instruction if it's 0. This test must be made because the `sev` instruction will release *all* cores suspended in `wfe` when executed, so the test makes sure only the cores with an actual address to run will be release and the others will be suspended again.
+The value read from the `Core X Mailbox 3 Rd/Clr` register is tested, and the core jumps back to `1` and to the `wfe` instruction if it's 0. This test must be made because the `sev` instruction will release *all* cores suspended in `wfe` when executed, so the test makes sure only the cores with an actual address to run will exit the loop and the others will be suspended again.
 
 ### Release Secondary Core
 
@@ -355,11 +355,11 @@ The value read from the Mailbox 3 Rd/Clr register is tested, and the core jumps 
 	bx	r4
 ```
 
-The core that read an value different from zero in its Mailbox 3 Rd/Clr register will then clear that register by writing anything to them in the `str` ([Store with register offset](http://infocenter.arm.com/help/topic/com.arm.doc.100076_0100_00_en/pge1425890576693.html)) instruction. It will then initialize the registers as per the ARM Linux Boot Protocol, and jump to `r4`.
+The cores that read a value different from zero in their `Core X Mailbox 3 Rd/Clr` register will then clear that register by writing back the address with the `str` ([Store with register offset](http://infocenter.arm.com/help/topic/com.arm.doc.100076_0100_00_en/pge1425890576693.html)) instruction. It will then initialize the `r0`, `r1`, and `r2` registers as per the ARM Linux Boot Protocol, and jump to `r4`.
 
-> Core 0 has jumped to `9` long ago, with the kernel address in `r4`, making it run the kernel with the expected values in the registers as per the boot protocol.
+> Core 0 has jumped to `9` long ago with the kernel address in `r4`, making it run the kernel with the expected values in the registers as per the boot protocol.
 
-> A write to the Mailbox-clear registers will set its bits to 0, but only where the value written has its bits *set to 1*. Since the code writes to this registers the value that was just read from the corresponding read register, the result is that the mailbox is set to 0. Details about how these registers work can be found in the BCM2836 ARM-local peripherals, section 4.1 - Write-set / Write-clear registers.
+> A write to a `Core X Mailbox Y Rd/Clr` register will set its bits to 0, but only where the value written has its bits *set to 1*. Since the code writes to this registers the value that was just read from the corresponding read register, the result is that the mailbox is set to 0. Details about how these registers work can be found in the [BCM2836 ARM-local peripherals](https://www.raspberrypi.org/documentation/hardware/raspberrypi/bcm2836/QA7_rev3.4.pdf), section 4.1 - Write-set / Write-clear registers.
 
 > The instruction used to jump to the address in the mailbox register is `bx` ([Branch and Exchange](http://infocenter.arm.com/help/topic/com.arm.doc.100076_0100_00_en/pge1425889997181.html)), which will *not* set `lr`, the Link Register, with the return address. This means execution is not supposed to return here, and that each core will be parked in the stub only once and then are supposed to run user code forever unless parked again also in user code. SmartStart.S does exactly that in its SecondarySpin loop.
 
@@ -373,7 +373,7 @@ The core that read an value different from zero in its Mailbox 3 Rd/Clr register
 
 This is where disabled cores are directed to. The `wfi` ([Wait for Interrupt](http://infocenter.arm.com/help/topic/com.arm.doc.100076_0100_00_en/pge1425917144829.html)) instruction works very similar to `wfe`, but does *not* wake up when `sev` is executed. Along with the branch back to `10`, this will effectively make disabled cores stay suspended forever in the stub.
 
-> I couldn't find anything about the purpose of disabling cores in the stub. I believe it's unlike that this value is tweaked by the GPU (it would be after the `0x5afe570b` magic value to be easily located if it was the case), so it's likely that none of them will ever make it to `wfi`.
+> I couldn't find anything about the purpose of disabling cores in the stub. I believe it's unlike that this value is tweaked by the GPU (it would be after the `0x5afe570b` magic value to be easily located if it was the case), so it's likely that none of them will ever make it here.
 
 ### Data
 
@@ -441,7 +441,7 @@ _start:
 
 The first thing this stub does is configure how the timer ticks. The `wzr` register is the lower 32 bits of `xzr`, a 64-bit special register that ignores writes and always reads as 0. The `str` instruction will then write a 0 to `LOCAL_CONTROL` (Control register [1]) which sets the timer's clock pre-scaler source to the crystal clock instead of the [Advanced Peripheral Bus](http://infocenter.arm.com/help/index.jsp?topic=/com.arm.doc.ihi0024c/index.html) clock, and the timer increment to 1.
 
-The stub then sets the pre-scaler to 1 by writing `0x80000000` to `LOCAL_PRESCALER` (Core timer pre-scaler [2].)
+The stub then sets the pre-scaler to 1 by writing `0x80000000` to `LOCAL_PRESCALER` (Core timer pre-scaler [2]).
 
 > [1] [BCM2836 ARM-local peripherals](https://www.raspberrypi.org/documentation/hardware/raspberrypi/bcm2836/QA7_rev3.4.pdf), section 4.2 - Control register.
 
@@ -458,9 +458,9 @@ The stub then sets the pre-scaler to 1 by writing `0x80000000` to `LOCAL_PRESCAL
 	msr CNTVOFF_EL2, xzr
 ```
 
-Afterwards, the stub writes the timer clock frequency, 19.2 MHz, to the `CNTFRQ_EL0` register (Counter-timer Frequency register [3].) This register is the same register as the ARMv7 `CNTFRQ`, and accessible in the Exception Level 0, which means unprivileged access.
+Afterwards, the stub writes the timer clock frequency, 19.2 MHz, to the Counter-timer Frequency register (`CNTFRQ_EL0` [3]). This register is the same register as the ARMv7 `CNTFRQ` and accessible in the Exception Level 0, which means unprivileged access is allowed.
 
-The code then sets the `CNTVOFF_EL2` register (Counter-timer Virtual Offset [4]) to zero. This register holds an offset that is applied to the timer when it's read via `CNTVCT_EL0` (Counter-timer Virtual Count [5].)
+The code then sets the Counter-timer Virtual Offset register (`CNTVOFF_EL2` [4]) to zero. This register holds an offset that is applied to the timer when it's read via Counter-timer Virtual Count (`CNTVCT_EL0` [5]).
 
 > Information about the ARMv8 Exception Levels can be found [here](http://infocenter.arm.com/help/topic/com.arm.doc.ddi0500j/CHDHJIJG.html).
 
@@ -481,7 +481,7 @@ The code then sets the `CNTVOFF_EL2` register (Counter-timer Virtual Offset [4])
 	msr CPTR_EL3, x0
 ```
 
-The stub then sets bit 10 of `CPTR_EL3` (Architectural Feature Trap Register [6]), `TFP`, to 0, enabling [Scalable Vector Extention](https://developer.arm.com/products/software-development-tools/hpc/sve), [Advanced SIMD and floating-point functionality](http://infocenter.arm.com/help/topic/com.arm.doc.ddi0500j/CHDFIBCA.html) instructions to Exception Level 3 in secure and non-secure modes, 32 and 64 bits states.
+The stub then sets the `TFP` bit of Architectural Feature Trap Register (`CPTR_EL3` [6]), to 0, enabling [Scalable Vector Extention](https://developer.arm.com/products/software-development-tools/hpc/sve) and [Advanced SIMD and floating-point functionality](http://infocenter.arm.com/help/topic/com.arm.doc.ddi0500j/CHDFIBCA.html) instructions to Exception Level 3 in both secure and non-secure modes, and both 32 and 64 bits states.
 
 > [6] [ARM Architecture Reference Manual, ARMv8, for ARMv8-A architecture profile](https://static.docs.arm.com/ddi0487/da/DDI0487D_a_armv8_arm.pdf), section D12.2.31 - CPTR_EL3, Architectural Feature Trap Register (EL3)
 
@@ -493,7 +493,7 @@ The stub then sets bit 10 of `CPTR_EL3` (Architectural Feature Trap Register [6]
 	msr SCR_EL3, x0
 ```
 
-The code continues by configuring `SCR_EL3` (Secure Configuration Register [7]) as follows:
+The code continues by configuring Secure Configuration Register (`SCR_EL3` [7]) as follows:
 
 |Bit|Name|Value|Effect|
 |---|---|---|---|
@@ -518,7 +518,7 @@ The code continues by configuring `SCR_EL3` (Secure Configuration Register [7]) 
 	msr CPUECTLR_EL1, x0
 ```
 
-The stub then enables data coherency with the other cores by setting the `SMPEN` bit of the [CPU Extended Control Register (EL1)](http://infocenter.arm.com/help/topic/com.arm.doc.ddi0500j/CIHHHBDF.html) (CPUECTLR_EL1.)
+The stub then enables data coherency with the other cores by setting the `SMPEN` bit of the [CPU Extended Control Register (EL1)](http://infocenter.arm.com/help/topic/com.arm.doc.ddi0500j/CIHHHBDF.html) (`CPUECTLR_EL1`).
 
 > The other fields of this register, `CPURETCTL` and `FPRETCTL`, are related to CPU and VFP retention control. I don't know what retention control does. They are set to 0 here, which is their default reset value.
 
@@ -533,7 +533,7 @@ The stub then enables data coherency with the other cores by setting the `SMPEN`
 	msr SCTLR_EL2, x0
 ```
 
-Here the core is still running in EL3. Before entering EL2, the system is configured for that Exception Level by setting the System Control Register (EL2) (SCTLR_EL2 [8].) This is a rather complex register. The Cortex-A53 [implements the ARMv8-a architecture](http://infocenter.arm.com/help/topic/com.arm.doc.ddi0500j/BABHJJBC.html), so `0x30c50830`, configures it as follows (I've ommited reserved fields in this architecture, what is left translates nicely to the comment in the code):
+Here the core is still running in EL3. Before entering EL2, the system is configured for that Exception Level by setting the System Control Register (EL2) (`SCTLR_EL2` [8]). This is a rather complex register. The Cortex-A53 [implements the ARMv8-a architecture](http://infocenter.arm.com/help/topic/com.arm.doc.ddi0500j/BABHJJBC.html), so `0x30c50830`, configures it as follows (I've ommited reserved fields in this architecture, what is left translates nicely to the comment in the code):
 
 |Bit|Name|Value|Effect|
 |---|---|---|---|
@@ -587,7 +587,7 @@ It then puts the address of `in_el2` into `x0`, and sets the Link Register (`lr`
 	cbz x6, primary_cpu
 ```
 
-The code continues by reading the value of the Multiprocessor Affinity Register (MPIDR_EL1 [10]), and isolating the two less significant bits of the `Aff0` field. `cbz` ([Compare and Branch on Zero](http://infocenter.arm.com/help/topic/com.arm.doc.100076_0100_00_en/pge1427897655065.html)) will branch if the given register is zero. This will make the core 0 jump to `primary_cpu` to continue the boot process. All other cores continue with the code below.
+The code continues by reading the value of the Multiprocessor Affinity Register (`MPIDR_EL1` [10]), and isolating the two less significant bits of the `Aff0` field. `cbz` ([Compare and Branch on Zero](http://infocenter.arm.com/help/topic/com.arm.doc.100076_0100_00_en/pge1427897655065.html)) will branch if the given register is zero. This will make the core 0 jump to `primary_cpu` to continue the boot process. All other cores continue with the code below.
 
 > The `MPIDR` has been extended in the ARMv8 architecture but is backwards compatible with ARMv7, and since the Cortex-A53 only has four cores, `x6` will end up with the CPU ID similar to what `armstub7.S` does.
 
@@ -605,11 +605,13 @@ secondary_spin:
 	b boot_kernel
 ```
 
-Cores other than the primary core will be parked here just like in the `armstub7.S`. `x5` points to the base address where the cores will look for the start address of the code they will run (`spin_cpu0`.) `wfe` ([Wait For Event](http://infocenter.arm.com/help/topic/com.arm.doc.100076_0100_00_en/cus1476202785203.html)) will suspend the core until an event happens, and `ldr` will put the address to run into `x4` (`x4 = *(uint64_t*)(x5 + x6 * 8)`.)
+Cores other than the primary core will be parked here just like in the `armstub7.S`. `x5` points to the base address where the cores will look for the start address of the code they will run (`spin_cpu0`). `wfe` ([Wait For Event](http://infocenter.arm.com/help/topic/com.arm.doc.100076_0100_00_en/cus1476202785203.html)) will suspend the core until an event happens, and `ldr` will put the address to run into `x4` as in `x4 = *(uint64_t*)(x5 + x6 * 8)`.
 
 In case the address is zero (remember `sev` will always wake up all cores), the code jumps back to `secondary_spin` and is suspended again. Otherwise, `x0` will be set to 0 as required by the boot protocol and execution will proceed at `boot_kernel`.
 
 > Interestingly, this stub doesn't use the Core Mailboxes to pass the start addresses to the cores, but a memory location. [SmartStart64.S](https://github.com/LdB-ECM/Raspberry-Pi/blob/master/Multicore/SmartStart64.S#L231) uses the same addresses used here. I couldn't find a reference to the Core Mailboxes being removed in SoCs using the Cortex-A53, so I don't know why they're not used here.
+
+> It's also interesting to notice that there's no mask that could be used to permanently disable a core in this stub.
 
 ### Jump to Kernel
 
@@ -674,6 +676,6 @@ kernel_entry32:
 dtb_space:
 ```
 
-This part of the stub is composed of data. `.ltorg` is a [assembler directive](http://infocenter.arm.com/help/topic/com.arm.doc.dui0041c/Chedgddh.html) that makes sure the data is within range of load instructions.
+This part of the stub is composed of data. `.ltorg` is a [assembler directive](http://infocenter.arm.com/help/topic/com.arm.doc.dui0041c/Chedgddh.html) that makes sure the data is within range of load instructions issued so far.
 
-The data here is the `spin_cpuX` quads that the secondary CPUs watch in the secondary loop, followed by the magic `0x5afe570b` value and same data as the other stubs.
+The data here is the `spin_cpuX` quads that the secondary CPUs watch in the secondary loop, followed by the magic `0x5afe570b` value and the same data as the other stubs.
