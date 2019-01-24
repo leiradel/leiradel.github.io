@@ -124,7 +124,7 @@ SECTIONS {
 
 First we set the architecture with `OUTPUT_ARCH(arm)`, and then we set the executable entry point with `ENTRY(kmain)`. I'm not sure those are needed, but there we go. After that, we begin laying out our sections in the `SECTIONS` block in the way we need in order to have `kmain` in the correct address.
 
-We call our first section in the resulting executable `.text`, and we force it to start at `0x00008000`. We then add to this output section the `.kmain` from the `kmain.o` object file, followed by all `.text` and `.text.*` sections from any file. This will make things in the `.kmain` section to be placed at the required address, but only from `kmain.o`.
+We call our first section in the resulting executable `.text`, and we force it to start at `0x00008000`. We then add to this output section the `.kmain` from the `kmain.o` object file, followed by all `.text` and `.text.*` sections from any file. This will make things in the `.kmain` section to be placed at the required address, but only from `kmain.o`. `KEEP` is used to prevent the linker from [eliminating](https://sourceware.org/binutils/docs-2.27/ld/Input-Section-Keep.html) the section when `--gc-sections` is passed to it. Since no one refers to things in it, it's important to make sure it won't go away.
 
 > Please notice the difference between the function `kmain` and the *section* `.kmain`, with a leading dot.
 
