@@ -242,3 +242,7 @@ Disassembly of section .text:
 For now our program looks good: the compiler didn't generate a function frame, and is setting the stack pointer register at the end of the code plus 16 KB.
 
 With these details behind us, we will be able to write the `start` function in the next post.
+
+## Source Code
+
+The source code listed here can be found [here](https://github.com/leiradel/barebones-rpi/tree/master/barebones01).
