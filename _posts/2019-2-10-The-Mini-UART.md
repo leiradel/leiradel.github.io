@@ -40,7 +40,7 @@ void gpio_setpull(const unsigned pin, const gpio_pull_t pull);
 static void wait(unsigned count) {
   // Spend CPU cycles.
   while (count-- != 0) {
-    __asm volatile("");
+    // Empty.
   }
 }
 

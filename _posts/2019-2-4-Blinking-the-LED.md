@@ -168,19 +168,17 @@ static void __attribute__((noinline)) start(
     led_set(1);
 
     for (int i = 0; i < 1000000; i++) {
-      __asm volatile("");
+      // Empty.
     }
 
     led_set(0);
     
     for (int i = 0; i < 1000000; i++) {
-      __asm volatile("");
+      // Empty.
     }
   }
 }
 ```
-
-> The compiler sometimes optimize out the busy loop. To avoid that, we add `__asm volatile("")`. The compiler doesn't know it's empty, and is forced to emit code for the loop. It's also a good idea to make the same thing to the infinite loop at the end of `kmain`.
 
 Now we only need to copy the kernel to a SDRAM card, insert it in a Raspberry Pi, and turn it on, but the card has to be formatted with the correct file system, and some files must be there for the board to boot.
 
@@ -386,7 +384,7 @@ uint64_t timer(void) {
 
 void timer_wait_until(const uint64_t t1) {
   while (timer() < t1) {
-    __asm volatile("");
+    // Empty.
   }
 }
 ```
