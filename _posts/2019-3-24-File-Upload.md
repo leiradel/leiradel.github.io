@@ -645,6 +645,8 @@ The most interesting of the three is Lua. There's no compatibility layer, additi
 
 > I had to define `LUA_32BITS` to work around an issue. Without it everything works just fine, but integer numbers (which have 64 bits without that flag) only print their upper 32 bits, i.e. `for i=1,10 do print(i) end` will print `0` 10 times, and `=1<<31` also prints `0`, but `=1<<32` prints `1`. This is very likely a wrong format string being used to turn an integer into a string, but I didn't investigate any further.
 
+A video of the programs being uploaded and run can be watched [here](https://asciinema.org/a/234924).
+
 ## Source Code
 
 The source code for this post can be found [here](https://github.com/leiradel/barebones-rpi/tree/master/barebones08).
