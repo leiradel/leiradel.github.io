@@ -9,7 +9,7 @@ In Brazil there's a standardized document that can be used to pay for goods and 
 
 Because boletos were one of biggest motives banks bought printers, my boss made me learn how to decode 2 of 5 barcodes by hand, just by taking note of the width of each bar. I like to think this was important for my profession, but looking back I think it was just a prank.
 
-However, I really liked barcodes, and started to learn about other standards like [Code 39](https://en.wikipedia.org/wiki/Code_39) and [EAN-13](https://en.wikipedia.org/wiki/International_Article_Number), the later being easily to recognize as they're printed on the box of every product you can find on the shelves.
+However, I really liked barcodes, and started to learn about other standards like [Code 39](https://en.wikipedia.org/wiki/Code_39) and [EAN-13](https://en.wikipedia.org/wiki/International_Article_Number), the later being easy to recognize as they're printed on the box of every product you can find on the shelves.
 
 Today, I'm mostly interested in 2D barcodes such as [Data Matrix](https://en.wikipedia.org/wiki/Data_Matrix) (mainly because it's in the public domain and have a [free, open source library](https://github.com/dmtx) that can read and write such barcodes), and [QR Codes](https://en.wikipedia.org/wiki/QR_code) (because everyone recognizes them and know that they can be scanned, have widespread use, and in my opinion are easy on the eyes).
 
@@ -17,9 +17,9 @@ I keep daydreaming about using barcodes in old computers to achieve augmented te
 
 ## QR Codes
 
-One-dimension barcodes are usually easy to generate, as they don't mandate any kind of marks and/or error correction code to be present in the data. Applications using these barcodes would usually employ some simple [checksum](https://en.wikipedia.org/wiki/Checksum) to prevent erroneous data from entering the system, if any, and it was all ad hoc. Unfortunately, 1D barcodes are not really suitable for a ZX81, since the unmodified hardware had a graphics resolution of 64x48 pixels, with pixels too big to generate barcodes with any meaningful data.
+One-dimension barcodes are usually easy to generate, as they don't mandate any kind of marks and/or error correction code to be present in the data. Applications using these barcodes would usually employ some simple [checksum](https://en.wikipedia.org/wiki/Checksum) to prevent erroneous data from entering the system, if any, and it was all ad hoc. Unfortunately, 1D barcodes are not really suitable for a ZX81, since the unmodified hardware had a graphics resolution of 64x48 pixels, with pixels too big to generate barcodes with meaningful data.
 
-Two-dimensions barcodes on the other hand usually have complex ways to encode the message, and mandate some kind of error correction to be present so that the code can be read even if the barcode is damaged. [The maths behind the error correction calculation](https://www.thonky.com/qr-code-tutorial/error-correction-coding) are way over my head, but one day I was reading the [Paged Out!](https://pagedout.institute/) magazine issue 2 and stumbled into an article titled *An artisanal QR code* where the author shows how to create a QR Code from scratch without any dependencies.
+Two-dimensions barcodes on the other hand can contain more data, but usually have complex ways to encode the message, and mandate some kind of error correction to be present so that the code can be read even if the barcode is damaged. [The maths behind the error correction calculation](https://www.thonky.com/qr-code-tutorial/error-correction-coding) are way over my head, but one day I was reading the [Paged Out!](https://pagedout.institute/) magazine issue 2 and stumbled into an article titled *An artisanal QR code* where the author shows how to create a QR Code from scratch without any dependencies.
 
 The code is small because it can only generate QR Code version 1, and is hardcoded to ECC (Error Correction Code) level M, and mask 0 (checkerboard). While this may sound too limiting, these allow for up to 14 bytes of data with very little code. Support for all types, ECC levels, and masks would render this project impractical for the humble ZX81, as it's easy to see [here](https://www.thonky.com/qr-code-tutorial/data-masking).
 
@@ -31,7 +31,7 @@ The first thing we'll do is understand the JavaScript code in the Paged Out! art
 
 ### Message Encoding
 
-The first translated piece is the function that encodes the message into the right format for the QR Code.
+The first piece of code is the function that formats the message into the right format for the QR Code.
 
 ```js
 function to_binary(n) {
@@ -64,21 +64,21 @@ var str = "PagedOut!";
 var data = prepare(str, 16);
 ```
 
-`prepare` begins by creating an array of strings, where each position has a string with the binary representation of the corresponding character in the original message. This array is like a [bitstream](https://en.wikipedia.org/wiki/Bitstream), where bits can be added at will.
+`prepare` begins by creating an array of strings `data`, where each position has a string with the binary representation of the corresponding character in the original message. This array is like a [bitstream](https://en.wikipedia.org/wiki/Bitstream), where bits can be added at will.
 
-After that, it performs some steps to format the message:
+After that, it performs some steps to encode the message:
 
 1. Prepend 8 bits with the length of the message
 1. Prepend `"0100"`, which means that the message uses binary encoding
 1. Append `"0000"`, which is the end of message mark
-1. Append alternated binary representations of `0xec` and `0x11`, until the encoded message has `len*8` bits (`len` here is 16, the maximum for this QR Code type)
+1. Append alternated binary representations of `0xec` and `0x11`, until the encoded message has `len * 8` bits (`len` here is 16, the maximum for this QR Code type)
 
 Example encoded message with `"PagedOut!"`:
 
 |Value|Description|
 |-|-|-|
 |`0b0100`|Use binary encoding|
-|9 (with 8 bits)|Message length, up to 14 bytes|
+|9|Message length with 8 bits, maximum value is 14|
 |`'P'`|Message|
 |`'a'`||
 |`'g'`||
@@ -95,7 +95,7 @@ Example encoded message with `"PagedOut!"`:
 |0x11||
 |0xec||
 
-With the bits in place, the code then converts the array of bits into an array of bytes and returns it. In this example, this array is:
+With the bits in place, the code then converts the array of bits into an array of bytes and returns it. In this example, the returned array is:
 
 ```js
 [ 64, 149, 6, 22, 118, 86, 68, 247, 87, 66, 16, 236, 17, 236, 17, 236 ]
@@ -157,7 +157,7 @@ function get_generator_poly(n) {
 var generator_poly = get_generator_poly(10);
 ```
 
-Instead of using all that code to create `generator_poly`, we'll hardcode the resulting 11-bytes polynomial in our code since it'll save us precious bytes in the ZX81:
+Instead of using all that code to create `generator_poly`, we'll hardcode the resulting 11-bytes polynomial in our code since it'll save us precious bytes in the ZX81, and any other Z80-based computer:
 
 ```js
 [ 1, 216, 194, 159, 111, 199, 94, 95, 113, 157, 193 ]
@@ -165,7 +165,7 @@ Instead of using all that code to create `generator_poly`, we'll hardcode the re
 
 ### The ECC
 
-With the generator polynomial at hand, the following code will compute the ECC for the given message.
+With the generator polynomial in our hands, the following code will compute the ECC for any given message.
 
 ```js
 function polynomial_mod(a, b, mod) {
@@ -255,7 +255,7 @@ for (var i=0; i<format_info.length; i++) {
 }
 ```
 
-Since the format info is always the same, we'll hardcode its value with the ECC already appended and the mask bits already xor'ed to save some bytes:
+Since the format info is always the same in our case, we'll hardcode its value with the ECC already appended and the mask bits already xor'ed to save some bytes:
 
 ```js
 [ 1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0 ]
@@ -267,15 +267,15 @@ The QR Code version 1 has 21x21 pixel (modules if we use its terminology), some 
 
 Starting with a blank 21x21 canvas, the three finders patterns (in red below) must be drawn, along with the timing patterns (in green), and the "dark" module (in blue).
 
-![BlankQRCode]({{ site.url }}/assets/2020-7-19-QR-Codes-on-the-ZX81/qrc1.png)
+![QR Code fixed modules]({{ site.url }}/assets/2020-7-19-QR-Codes-on-the-ZX81/qrc1.png)
 
-![BlankQRCode](../assets/2020-7-19-QR-Codes-on-the-ZX81/qrc1.png)
+![QR Code fixed modules](../assets/2020-7-19-QR-Codes-on-the-ZX81/qrc1.png)
 
-On top of this "blank" QR Code we draw the format info and the encoded message. However, since our format info is hardcoded, we can draw it as part of the fixed pixels (in magenta).
+On top of this QR Code template we draw the format info and the encoded message. However, since our format info is hardcoded, we can draw it as part of the fixed pixels (in magenta).
 
-![BlankQRCode2]({{ site.url }}/assets/2020-7-19-QR-Codes-on-the-ZX81/qrc1b.png)
+![QR Code fixed modules and the format info]({{ site.url }}/assets/2020-7-19-QR-Codes-on-the-ZX81/qrc1b.png)
 
-![BlankQRCode2](../assets/2020-7-19-QR-Codes-on-the-ZX81/qrc1b.png)
+![QR Code fixed modules and the format info](../assets/2020-7-19-QR-Codes-on-the-ZX81/qrc1b.png)
 
 Now the only thing missing is the encoded message with its ECC. To draw it, we must follow a zigzag pattern starting at the bottom-right pixel and going up to the format info, then go to the left and continuing down up to the border, then up again until we draw all the bits from the encoded message, like in the image below.
 
@@ -285,7 +285,7 @@ Now the only thing missing is the encoded message with its ECC. To draw it, we m
 
 It's possible to notice the four bits for the encoding type (Enc), the eight bits with the length of the message (Len), then the message contents (`www.wikipedia.org` in the example image), the end of message mark (End), and the ECC bytes (E1 to E7). In our case, we have 10 bytes of ECC, but the zigzag pattern is exactly the same.
 
-Every time we draw a pixel, a mask must be applied. The purpose of the mask is to increase the odds that the QR Code will be successfully decoded by trying to avoid patterns in the code that look like the finders patterns, and having the same amount of black and white pixels.
+Every time we draw a pixel, a mask must be applied. The purpose of the mask is to increase the odds that the QR Code will be successfully decoded by trying to avoid patterns in the code that look like the finders patterns, and by balancing the amount of black and white pixels.
 
 The process of finding the best mask to use with a particular payload is not complicated but, would greatly increase the size of the program, so we hardcode the checkerboard mask.
 
@@ -396,7 +396,7 @@ qrc1_shift_msg:
     inc hl
 ```
 
-Easy enough, the `rrd` instruction makes it easy to shift the message four bytes to the right, which is all we have to do to open up space for the encoding type at the beginning of the encoded bits. The last `rrd` ensures that the low four bits of the last message byte and the end of message mark are appended to the encoded message.
+The `rrd` instruction makes it easy to shift the message four bytes to the right, which is all we have to do to open up space for the encoding type at the beginning of the encoded bits. The last `rrd` ensures that the low four bits of the last message byte and the end of message mark are appended to the encoded message.
 
 With the message shifted, we can pad it with `0xec` and `0x11` until the encoded message has 16 bytes in total.
 
@@ -584,7 +584,13 @@ When the inner loop exits, we restore `HL` (since it was incremented in every in
     ldir
 ```
 
-With the ECC in place, we apply the checkerboard mask over the encoded message. We do this here instead of when drawing because it's easier to have the hardcoded bit pattern of the mask than to test each pixel for the mask when drawing.
+### Applying the Mask
+
+With the ECC in place, we apply the checkerboard mask over the encoded message.
+
+To apply the mask, for every bit in the encoded message and ECC, we have to test the corresponding pixel coordinates using a condition that depends on the used mask, and invert the bit if the condition is true. Only after that we test the bit and set the corresponding pixel if it's 1.
+
+Instead of applying the mask when drawing, we pre-apply the mask on top of the encoded message and the ECC, because it's easier to have the hardcoded bit pattern of the mask than to test each pixel for the mask condition when drawing.
 
 If we follow the zigzag pattern to draw the modules and test for the mask 0 condition where `(x + y) % 2` must be zero, we end up with the following values:
 
@@ -595,7 +601,7 @@ If we follow the zigzag pattern to draw the modules and test for the mask 0 cond
 0x66, 0x99
 ```
 
-The `9`s are generated when we're drawing up, and the `6`s when we're drawing down. However, the encoding type and the end of message mark must not be masked, so their corresponding positions in the mask must be zeroed. The encoding type is always the first four bits of the encoded mask, so we change the first byte from `0x99` to `0x09`. To zero the end of message mark in the mask, we use the value of `HL` that we saved before evaluating the ECC, right before padding the message with `0xec` and `0x11`.
+However, the encoding type and the end of message mark must not be masked, so their corresponding positions in the mask must be zeroed. The encoding type is always the first four bits of the encoded mask, so we change the first byte from `0x99` to `0x09`. To zero the end of message mark in the mask, which depends on the message length, we use the value of `HL` that we saved before evaluating the ECC, right before padding the message with `0xec` and `0x11`.
 
 To change the mask we first copy it to the scratch buffer, so that we can use it again in a subsequent encoding. After the copy, we use `HL` to get the position of the end of message mark and zero the low nibble.
 
@@ -644,17 +650,17 @@ When this routine ends, `qrc1_message` contains the encoded message along with i
 
 To draw the QR Code we'll need to read its bits one by one, as each one corresponds to a pixel. Each bit read will tell if the corresponding pixel must be set (turned black) or kept reset (stay white).
 
-Before diving into the details, it's important that we know how the ZX81 screen works. The ZX81 only features a 24x32 characters, text mode screen, although it's possible to write custom video generation routines to achieve pseudo-high resolution with unmodified hardware.
+Before diving into the details, it's important that we know how the ZX81 screen works. The ZX81 only features a 24x32 characters, text mode screen, although it's possible to write custom video generation routines to achieve pseudo-high resolutions with unmodified hardware.
 
 In the standard mode, there are [64 different characters](https://en.wikipedia.org/wiki/ZX81_character_set) and their inverses, using a proprietary encoding. Among those characters there are the block graphic characters with values from 0 to 7 and from 128 to 135, which subdivides the character into a 2x2 grid, making it possible to draw graphics with a resolution of 64x48 pixels.
 
-Unfortunately, the bit pattern of the character codes doesn't follow the visual representation of the character on the screen. For characters from 0 to 7 there's a direct relationship of bits 0 to 2 where bit 0 corresponds to the top-left pixel in the character, bit 1 to the top-right, and bit 2 to the bottom-left. However, bit 3 doesn't correspond to the bottom-right pixel, setting this bit will make the character code jump to the range from 8 to 15, which are just a few gray blocks and the start of the "print" characters, to the inverted characters.
+Unfortunately, the bit pattern of the character codes doesn't follow the visual representation of the character on the screen. For characters from 0 to 7 there's a direct relationship of bits 0 to 2 where bit 0 corresponds to the top-left pixel in the character, bit 1 to the top-right, and bit 2 to the bottom-left. However, bit 3 doesn't correspond to the bottom-right pixel, if we want to set this pixel in the character we will have to convert the character to the inverted characters since all block graphic characters with this pixel set are inverted characters.
 
 To correctly set the bottom-right pixel, it's necessary to convert the character to a different representation where bits 0 to 3 correspond to the pixels in the character, set it, and then convert back to the resulting character.
 
-It's not that difficult, really. If the character has the 7th bit set, it's an inverted character, so we can xor its code with `0x8f` to bring the values in the 135->128 range to 8->15. Then we can set/reset the bits from 0 to 3 at will, and when we're done we convert it back to a character by checking bit 4: if it's set, we xor the value with `0x8f` again to bring values in the 8->15 range back to 135->128.
+It's not that difficult, really. If the character has the 7th bit set, it's an inverted character, so we can xor its code with `0x8f` to bring the values in the 135->128 range to 8->15. Then we can set/reset the bits from 0 to 3 at will, and when we're done we convert it back to a character by checking bit 4: if it's set, we xor the value with `0x8f` again to bring values in the 8->15 range back to 135->128. Note that this only works if we can be sure that we'll only be dealing with block graphic characters.
 
-Now that we know how set and reset individual pixels inside a character, we can implement a screen cursor that points to a pixel. That cursor must support operations to move up, down, left, and right, and to set the current pixel. We don't need to reset the current pixel, since we'll make sure all of them are white before start drawing.
+Now that we know how to set and reset individual pixels inside a character, we can implement a screen cursor. That cursor must support operations to move up, down, left, and right, and to set the current pixel. We don't need to reset the current pixel, since we'll make sure all of them are white before start drawing.
 
 The screen cursor uses `DE` to point to the corresponding character in the screen, and `C` to tell which pixel in the character corresponds to the module:
 
@@ -663,7 +669,7 @@ The screen cursor uses `DE` to point to the corresponding character in the scree
 * 4: The pixel is in the bottom-left position
 * 8: The pixel is in the bottom-right position
 
-We then write routines to move the cursor in the four directions, and to set the pixel for the current cursor position. Depending on the value of `C` only it has to be updated, but sometimes the `DE` must also be updated because the next pixel is in a different character.
+We then write routines to move the cursor in the four directions, and to set the pixel for the current cursor position. Depending on the value of `C` only it has to be updated when moving the cursor, but sometimes the `DE` must also be updated because the next pixel is in a different character.
 
 ```
 ; Moves the cursor one pixel to the left.
@@ -785,7 +791,7 @@ We can also have some helper routines. When we draw the modules in a zigzag patt
 1. Move the cursor up and to the right
 1. Repeat with the next two bits
 
-Since it's possible to draw entire nibbles worth of modules in the QR Code without overwriting prohibited areas, we can expand the group from 2 to 4 modules.
+Since it's possible to draw entire nibbles at one time in the QR Code without overwriting prohibited areas, we can expand the group from 2 to 4 pixels.
 
 ```
 nibble_up_count:
@@ -862,7 +868,7 @@ draw_fixed_row:
     jr nz, draw_fixed_row
 ```
 
-At the end of the loop, `DE` is one character to the right of the bottom-right character of the QR Code. We then decrement it, and set `C` to 1, so we have the screen cursor at the bottom-right pixel of the code.
+At the end of the loop, `DE` is one character to the right of the bottom-right character of the QR Code. We then decrement it and set `C` to 1, so we have the screen cursor at the bottom-right pixel of the code.
 
 After setting up the screen cursor, we set up `HL` and `B` to be our bitstream.
 
@@ -993,12 +999,12 @@ When the routine returns, the QR Code is ready to be scanned.
 
 ## Uses
 
-There aren't many uses of a QR Code generator for the ZX81, but some things come to mind:
+There aren't many uses of a QR Code generator for the ZX81, but some kind of augmented technology, where we can use some external hardware to read the QR Code and do something that is difficult for the ZX81 like downloading something from the Internet and sending the data to the ZX81 via some interface or even using the cassette input in unmodified hardware, opens up some interesting possibilities:
 
-* Augmented technology, where we can use some external hardware to read the QR Code and do something that is difficult for the ZX81 like downloading something from the Internet and sending the data to the ZX81 via some interface or even using the cassette input in unmodified hardware
-* To send high scores from a game to a server, like how [Nogalious](https://www.luegolu3go.com/games) does using a [mobile app](https://play.google.com/store/apps/details?id=com.LUEGOLU3GO.LPGSREADER&hl=en) that can read a barcode generated in the game.
+* Implement games and applications much bigger than the original hardware allows
+* Send high scores from a game to a server, like how [Nogalious](https://www.luegolu3go.com/games) does using a [mobile app](https://play.google.com/store/apps/details?id=com.LUEGOLU3GO.LPGSREADER&hl=en) that can read a barcode generated in the game
 
-## Code
+## Source Code
 
 The code presented here is available in a [GitHub repository](https://github.com/leiradel/qrc1). If you use it in a project, I'd love to know.
 
