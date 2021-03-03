@@ -76,7 +76,7 @@ After that, it performs some steps to encode the message:
 Example encoded message with `"PagedOut!"`:
 
 |Value|Description|
-|-|-|-|
+|-|-|
 |`0b0100`|Use binary encoding|
 |9|Message length with 8 bits, maximum value is 14|
 |`'P'`|Message|
